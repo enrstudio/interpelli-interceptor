@@ -1,0 +1,40 @@
+name: Monitor interpelli scuola
+
+on:
+  schedule:
+    # Ogni 20 minuti. La sintassi cron di GitHub Actions è UTC, non ora
+    # italiana - va bene comunque perché controlliamo continuamente.
+    - cron: "*/20 * * * *"
+  workflow_dispatch: {}  # permette anche di lanciarlo a mano dalla tab "Actions"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run monitor
+        env:
+          INTERPELLI_SMTP_USER: ${{ secrets.INTERPELLI_SMTP_USER }}
+          INTERPELLI_SMTP_PASSWORD: ${{ secrets.INTERPELLI_SMTP_PASSWORD }}
+          INTERPELLI_EMAIL_TO: ${{ secrets.INTERPELLI_EMAIL_TO }}
+          INTERPELLI_TELEGRAM_BOT_TOKEN: ${{ secrets.INTERPELLI_TELEGRAM_BOT_TOKEN }}
+          INTERPELLI_TELEGRAM_CHAT_ID: ${{ secrets.INTERPELLI_TELEGRAM_CHAT_ID }}
+        run: python3 monitor_interpelli.py
+
+      - name: Commit stato aggiornato (avvisi già visti)
+        run: |
+          git config user.name "interpelli-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add seen_interpelli.json
+          git diff --staged --quiet || git commit -m "Aggiorna avvisi già visti [skip ci]"
+          git push
