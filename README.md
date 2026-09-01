@@ -226,3 +226,16 @@ A028: nel vecchio ordinamento "28/A" era Educazione Artistica, oggi A028
 è Matematica.
 
 
+
+## 9. Nota sul blocco 403 di Bologna
+
+`bo.istruzioneer.gov.it` può rispondere 403 quando lo script gira su
+GitHub Actions, anche se il sito permette lo scraping via robots.txt — è
+un blocco anti-bot (tipo Cloudflare) che spesso colpisce interi blocchi
+di IP dei datacenter cloud, non specifico contro questo script. Dalla
+versione con il fallback proxy, lo script tenta automaticamente di
+bypassarlo tramite un proxy pubblico gratuito (allorigins.win) quando
+incontra un 403: se nel log vedi "bypassato tramite proxy pubblico", ha
+funzionato. Se anche il proxy fallisce (è un servizio di terze parti non
+garantito al 100%), l'errore viene comunque segnalato e le altre fonti
+continuano normalmente — non blocca l'intero controllo.

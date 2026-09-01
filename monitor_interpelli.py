@@ -20,6 +20,7 @@ import json
 import smtplib
 import ssl
 import time
+import urllib.parse
 from email.mime.text import MIMEText
 from datetime import datetime
 from pathlib import Path
@@ -125,9 +126,16 @@ def matches_keywords(text):
     return any(kw.lower() in t for kw in KEYWORDS)
 
 
-def _get_with_retry(url, max_attempts=2, backoff_seconds=3):
-    """Richiesta HTTP con un tentativo di retry in caso di errore transitorio
-    (utile contro blocchi anti-bot momentanei tipo Cloudflare)."""
+def _get_with_retry(url, max_attempts=2, backoff_seconds=3, use_proxy_on_403=True):
+    """Richiesta HTTP con un tentativo di retry in caso di errore transitorio.
+
+    Se il sito risponde 403 (blocco anti-bot, spesso per IP del datacenter
+    del runner) e use_proxy_on_403 è True, tenta subito una volta tramite
+    un proxy pubblico gratuito (allorigins.win), che effettua la richiesta
+    da un indirizzo IP diverso. È un servizio di terze parti non garantito
+    al 100%: se anche questo fallisce, l'errore originale viene comunque
+    segnalato normalmente.
+    """
     last_exc = None
     for attempt in range(1, max_attempts + 1):
         try:
@@ -136,6 +144,20 @@ def _get_with_retry(url, max_attempts=2, backoff_seconds=3):
             return resp
         except requests.RequestException as e:
             last_exc = e
+            is_403 = (
+                isinstance(e, requests.HTTPError)
+                and e.response is not None
+                and e.response.status_code == 403
+            )
+            if is_403 and use_proxy_on_403:
+                try:
+                    proxied_url = "https://api.allorigins.win/raw?url=" + urllib.parse.quote(url, safe="")
+                    resp = requests.get(proxied_url, headers=HEADERS, timeout=25)
+                    resp.raise_for_status()
+                    print(f"[i] Blocco 403 su {url}, bypassato tramite proxy pubblico.")
+                    return resp
+                except requests.RequestException as e_proxy:
+                    last_exc = e_proxy
             if attempt < max_attempts:
                 time.sleep(backoff_seconds)
     raise last_exc
