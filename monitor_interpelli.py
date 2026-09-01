@@ -19,6 +19,7 @@ import re
 import json
 import smtplib
 import ssl
+import time
 from email.mime.text import MIMEText
 from datetime import datetime
 from pathlib import Path
@@ -91,7 +92,13 @@ TELEGRAM_BOT_TOKEN = os.environ.get("INTERPELLI_TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("INTERPELLI_TELEGRAM_CHAT_ID", "")
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; InterpelliMonitor/1.0; personal use)"
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Connection": "keep-alive",
 }
 
 # --------------------------------------------------------------------------
@@ -118,6 +125,22 @@ def matches_keywords(text):
     return any(kw.lower() in t for kw in KEYWORDS)
 
 
+def _get_with_retry(url, max_attempts=2, backoff_seconds=3):
+    """Richiesta HTTP con un tentativo di retry in caso di errore transitorio
+    (utile contro blocchi anti-bot momentanei tipo Cloudflare)."""
+    last_exc = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            resp = requests.get(url, headers=HEADERS, timeout=20)
+            resp.raise_for_status()
+            return resp
+        except requests.RequestException as e:
+            last_exc = e
+            if attempt < max_attempts:
+                time.sleep(backoff_seconds)
+    raise last_exc
+
+
 def fetch_links_wordpress(url):
     """Scarica una pagina WordPress ed estrae (titolo, link) di ogni avviso.
 
@@ -128,8 +151,7 @@ def fetch_links_wordpress(url):
     ampio e filtriamo per la parola "interpel" nel testo del link, per
     evitare di catturare i link del menu di navigazione.
     """
-    resp = requests.get(url, headers=HEADERS, timeout=20)
-    resp.raise_for_status()
+    resp = _get_with_retry(url)
     soup = BeautifulSoup(resp.text, "html.parser")
 
     items = []
@@ -165,8 +187,7 @@ def fetch_links_wordpress(url):
 def fetch_links_telegram(url):
     """Scarica la pagina pubblica di anteprima di un canale Telegram ed
     estrae (testo_messaggio, link_permanente) per ogni post."""
-    resp = requests.get(url, headers=HEADERS, timeout=20)
-    resp.raise_for_status()
+    resp = _get_with_retry(url)
     soup = BeautifulSoup(resp.text, "html.parser")
 
     items = []
